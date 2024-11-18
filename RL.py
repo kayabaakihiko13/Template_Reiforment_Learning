@@ -4,24 +4,40 @@ import torch.nn as nn
 import torch.optim as optim
 from collections import deque
 import random
-
+import matplotlib.pyplot as plt
 # QAgent class with basic Q-learning functionality
+
 class QAgent:
     def __init__(self, state_size, action_size, alpha=0.1, gamma=0.9, epsilon=0.1):
         """
-        Q Agent merupakan algoritma dasar pada reiforment learning yang dirancang untuk bekerja 
-        pada lingkungan grid 2d dengan berbagai aksi yang dapat dilakukan setiap saat
-
+        QAgent is a basic reinforcement learning algorithm designed to work in a 2D grid environment,
+        where the agent learns optimal actions to maximize cumulative rewards.
+        
+        Parameters:
+        - state_size: Dimension of the state space (assumes a 2D grid).
+        - action_size: Number of possible actions.
+        - alpha: Learning rate.
+        - gamma: Discount factor.
+        - epsilon: Exploration rate for epsilon-greedy strategy.
         """
         self.q_table = np.zeros((state_size, state_size, action_size))  # Assuming a 2D grid state
         self.alpha = alpha
         self.gamma = gamma
         self.epsilon = epsilon
         self.action_size = action_size
-
+        self.reward_in_episode = []
+        self.episode_lengths = []
+        self.training_errors = []
+        self.episode_errors = []
     def choose_action(self, state):
         """
-        choose action merupakan statergi aksi berdasarkan nilai epsilon-gredy
+        Select an action based on the epsilon-greedy strategy.
+        
+        Parameters:
+        - state: Current state as a tuple (row, col).
+        
+        Returns:
+        - The index of the chosen action.
         """
         if np.random.uniform(0, 1) < self.epsilon:
             return np.random.choice(self.action_size)  # Explore
@@ -30,50 +46,61 @@ class QAgent:
 
     def learn(self, state, action_idx, reward, next_state):
         """
-        algoritma ini merupakan pembaruan Q table dengan menggunakan algoritma
-        Q-Learning
-        Formula:
-        Q(s,a) <- Q(s, a) + α * [r + γ * max_a' Q(s', a') - Q(s, a)] 
-        langkah algoritma:
-        1. Hitung nilai aksi terbaik di keadaan berikutnya (max_a' Q(s', a')).
-        2. Hitung target TD (r + γ * max_a' Q(s', a')).
-        3. Hitung TD Error (selisih antara TD target dan Q(s, a)).
-        4. Perbarui nilai Q-Table untuk keadaan dan aksi tersebut:
-        Q(s, a) ← Q(s, a) + α * TD Error
+        Update the Q-table using the Q-learning algorithm.
+        
+        Parameters:
+        - state: Current state as a tuple (row, col).
+        - action_idx: Index of the action taken.
+        - reward: Reward received after taking the action.
+        - next_state: State reached after taking the action.
         """
         best_next_action = np.max(self.q_table[next_state[0], next_state[1], :])
         td_target = reward + self.gamma * best_next_action
         td_error = td_target - self.q_table[state[0], state[1], action_idx]
         self.q_table[state[0], state[1], action_idx] += self.alpha * td_error
-
-    def update_policy(self, env, num_episodes):
+        return td_error
+    def update_policy(self, env, num_episodes, verbose=False):
         """
-        memperbarui kebijakan (ekplotasi) agent untuk beberapa episode,dimana setiap
-        episode dimulai dari keadaan awal dan berakhir saat agen mencapai tujuan atau
-        jabatan
+        Train the agent for a specified number of episodes.
+        
+        Parameters:
+        - env: The environment in which the agent operates.
+        - num_episodes: Number of episodes to train the agent.
+        - verbose: If True, print rewards during training.
         """
         for _ in range(num_episodes):
             state = env.start
             done = False
+            total_reward ,steps= 0,0
             
             while not done:
                 action_idx = self.choose_action(state)
                 action = env.actions[action_idx]
                 next_state = env.get_next_state(state, action)
                 reward = env.get_reward(next_state)
-                
+
                 # Q-learning update
-                self.learn(state, action_idx, reward, next_state)
+                td_error = self.learn(state, action_idx, reward, next_state)
+                self.episode_errors.append(abs(td_error))
+
                 state = next_state
-                
+                total_reward += reward
+                steps += 1
+
                 # End episode if goal or trap is reached
                 if state == env.goal or state == env.trap:
                     done = True
-
+            self.reward_in_episode.append(total_reward)
+            self.episode_lengths.append(steps)
+            self.training_errors.append(np.mean(self.episode_errors))
+        if verbose:
+            print(f"total reward received is {total_reward}")
     def test_policy(self, env):
         """
-        menggunakan Q table yang udah didapat,agent dapat menjalakan aksi terbaik bedasarkan
-        nilai Q yang telah didapat
+        Test the agent's learned policy by following the optimal actions.
+        
+        Parameters:
+        - env: The environment in which the agent operates.
         """
         state = env.start
         steps = 0
@@ -86,8 +113,66 @@ class QAgent:
 
         if state == env.goal:
             print("Agent reached the goal!")
-        else:
+        elif state == env.trap:
             print("Agent fell into the trap!")
+    def plot_result(self) -> None:
+        """
+        Visualisasikan hasil pelatihan agent, termasuk reward per episode, 
+        panjang episode, dan error rata-rata per episode.
+        """
+        if not hasattr(self, "reward_in_episode") or not hasattr(self, "episode_lengths") or not hasattr(self, "training_errors"):
+            print("Error: Anda harus menjalankan update_policy() terlebih dahulu untuk menghasilkan metrik pelatihan.")
+            return
+
+        max_episodes_to_plot = 100  # Maksimal jumlah episode yang akan divisualisasikan
+        if len(self.reward_in_episode) > max_episodes_to_plot:
+            print(f"Memvisualisasikan hanya {max_episodes_to_plot} episode pertama.")
+            episodes = range(1, max_episodes_to_plot + 1)
+            rewards = self.reward_in_episode[:max_episodes_to_plot]
+            lengths = self.episode_lengths[:max_episodes_to_plot]
+            errors = self.training_errors[:max_episodes_to_plot]
+        else:
+            episodes = range(1, len(self.reward_in_episode) + 1)
+            rewards = self.reward_in_episode
+            lengths = self.episode_lengths
+            errors = self.training_errors
+
+        # Buat subplots untuk memvisualisasikan metrik
+        fig, axes = plt.subplots(3, 1, figsize=(10, 15))
+
+        # Plot reward per episode
+        axes[0].plot(episodes, rewards, label="Total Reward", color="blue")
+        axes[0].set_title("Total Reward per Episode")
+        axes[0].set_xlabel("Episode")
+        axes[0].set_ylabel("Reward")
+        axes[0].grid()
+        axes[0].set_ylim([0, max(rewards) * 1.1])  # Batasan sumbu y
+        axes[0].legend()
+
+        # Plot panjang episode per episode
+        axes[1].plot(episodes, lengths, label="Episode Length", color="green")
+        axes[1].set_title("Episode Length per Episode")
+        axes[1].set_xlabel("Episode")
+        axes[1].set_ylabel("Steps")
+        axes[1].grid()
+        axes[1].set_ylim([0, max(lengths) * 1.1])  # Batasan sumbu y
+        axes[1].legend()
+
+        # Plot error rata-rata per episode
+        axes[2].plot(episodes, errors, label="Training Error", color="red")
+        axes[2].set_title("Average Training Error per Episode")
+        axes[2].set_xlabel("Episode")
+        axes[2].set_ylabel("Error")
+        axes[2].grid()
+        axes[2].set_ylim([0, max(errors) * 1.1])  # Batasan sumbu y
+        axes[2].legend()
+
+        # Atur tata letak plot agar lebih rapi
+        plt.tight_layout()
+        plt.subplots_adjust(hspace=0.4)  # Menambahkan jarak antar subplots
+        plt.show()
+
+
 
 # SARSA Agent that inherits from QAgent
 class SARSA(QAgent):

@@ -45,18 +45,19 @@ class Environment:
 
 
 if __name__ == "__main__":
-    # Initialize environment and DQN agent
+    # Initialize environment and agent
     grid_size = 5
     env = Environment(grid_size=grid_size, start=(0, 0), goal=(4, 4), trap=(2, 2))
+    state_size = grid_size  # Grid is represented by rows and columns
+    action_size = len(env.actions)  # Number of actions
 
-    state_size = 2  # Representing the state as (row, col)
-    action_size = len(env.actions)  # Number of actions available
+    agent = QAgent(state_size=state_size, action_size=action_size,epsilon=1e-4)
 
-    agent = DQNAgent(state_size=state_size, action_size=action_size, lr=0.001, gamma=0.99, epsilon=0.1, device="cpu")
-
-    # Train the agent using DQN
+    # Train the agent
     num_episodes = 1000
-    agent.update_policy(env, num_episodes)
+    agent.update_policy(env, num_episodes, verbose=True)
 
     # Test the learned policy
     agent.test_policy(env)
+    # show the result
+    agent.plot_result()
