@@ -164,12 +164,13 @@ class QAgent:
         axes[2].set_xlabel("Episode")
         axes[2].set_ylabel("Error")
         axes[2].grid()
-        axes[2].set_ylim([0, max(errors) * 1.1])  # Batasan sumbu y
+        axes[2].set_ylim([0, np.max(errors) * 1.1])  # Batasan sumbu y
         axes[2].legend()
 
         # Atur tata letak plot agar lebih rapi
         plt.tight_layout()
-        plt.subplots_adjust(hspace=0.4)  # Menambahkan jarak antar subplots
+        # Menambahkan jarak antar subplots
+        plt.subplots_adjust(hspace=0.4)  
         plt.show()
 
 
@@ -178,38 +179,51 @@ class QAgent:
 class SARSA(QAgent):
     def __init__(self, state_size, action_size, alpha=0.1, gamma=0.9, epsilon=0.1):
         super().__init__(state_size, action_size, alpha, gamma, epsilon)
-
+        self.reward_in_episode = []
+        self.episode_lengths = []
+        self.training_errors = []
     def learn(self, state, action_idx, reward, next_state, next_action_idx):
         """SARSA update rule"""
         td_target = reward + self.gamma * self.q_table[next_state[0], next_state[1], next_action_idx]
         td_error = td_target - self.q_table[state[0], state[1], action_idx]
         self.q_table[state[0], state[1], action_idx] += self.alpha * td_error
-
+        return td_error
     def update_policy(self, env, num_episodes):
-        """SARSA training method"""
-        for _ in range(num_episodes):
+        max_steps = 100  # Tentukan batas langkah per episode
+        for episode in range(num_episodes):
             state = env.start
             action_idx = self.choose_action(state)
             done = False
+            total_reward = 0
+            steps = 0
             
             while not done:
                 action = env.actions[action_idx]
                 next_state = env.get_next_state(state, action)
                 reward = env.get_reward(next_state)
+                total_reward += reward
+                steps += 1
 
                 # Choose the next action based on SARSA
                 next_action_idx = self.choose_action(next_state)
 
                 # Update using SARSA's rule
-                self.learn(state, action_idx, reward, next_state, next_action_idx)
-
+                td_target = reward + self.gamma * self.q_table[next_state[0], next_state[1], next_action_idx]
+                td_error = td_target - self.q_table[state[0], state[1], action_idx]
+                self.q_table[state[0], state[1], action_idx] += self.alpha * td_error
+                self.episode_errors.append(abs(td_error))
                 # Move to the next state and action
                 state = next_state
                 action_idx = next_action_idx
-                
-                # End episode if goal or trap is reached
-                if state == env.goal or state == env.trap:
+
+                # End episode if goal or trap is reached or max_steps exceeded
+                if state == env.goal or state == env.trap or steps >= max_steps:
                     done = True
+
+            # Rekam metrik untuk episode ini
+            self.reward_in_episode.append(total_reward)
+            self.episode_lengths.append(steps)
+            self.training_errors.append(np.mean(self.episode_errors))
 
 # Deep Q-Network (DQN) class for approximating Q-values with neural networks
 class DQN(nn.Module):
